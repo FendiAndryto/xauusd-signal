@@ -33,7 +33,7 @@ xauusd-signal/
 
 ## Conventions
 - **Zero Build Step**: Frontend strictly uses vanilla JS and CDN libraries; do not introduce npm or frontend bundlers without explicit architectural review.
-- **Fail-Safe Data**: MT5 feed must gracefully handle offline/disconnected status by falling back to mock tick stream for UI testing.
+- **Strictly Real Data**: MT5 feed must handle offline status gracefully by returning empty/None with an explicit offline UI banner; no fake or synthetic mock candles permitted.
 - **Verification First**: Every logic change in `core/` must be covered by pytest unit tests with explicit assertions.
 - **Risk Management**: Signals must include deterministic Stop Loss (SL) and minimum Risk-to-Reward ratio (1:2).
 

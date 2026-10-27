@@ -1,0 +1,10 @@
+.git
+.gitignore
+__pycache__
+.pytest_cache
+tests/
+docs/
+tickets/
+*.md
+mt5_bridge.py
+.env

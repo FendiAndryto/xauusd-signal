@@ -1,43 +1,67 @@
-import time
-import random
+import logging
 from typing import List, Dict, Optional
-import MetaTrader5 as mt5
+
+try:
+    import MetaTrader5 as mt5
+    HAS_MT5_LIB = True
+except ImportError:
+    mt5 = None
+    HAS_MT5_LIB = False
+
+import httpx
+
+logger = logging.getLogger("mt5-feed")
 
 TF_MAP = {
-    "M1": mt5.TIMEFRAME_M1,
-    "M5": mt5.TIMEFRAME_M5,
-    "M15": mt5.TIMEFRAME_M15,
-    "H1": mt5.TIMEFRAME_H1,
-}
-
-TF_SECONDS = {
-    "M1": 60,
-    "M5": 300,
-    "M15": 900,
-    "H1": 3600,
+    "M1": 1 if not HAS_MT5_LIB else mt5.TIMEFRAME_M1,
+    "M5": 5 if not HAS_MT5_LIB else mt5.TIMEFRAME_M5,
+    "M15": 15 if not HAS_MT5_LIB else mt5.TIMEFRAME_M15,
+    "H1": 16385 if not HAS_MT5_LIB else mt5.TIMEFRAME_H1,
 }
 
 class MT5Feed:
-    def __init__(self, symbol: str = "XAUUSD"):
+    def __init__(self, symbol: str = "XAUUSD", mode: str = "direct", bridge_url: str = "http://host.docker.internal:8081"):
         self.symbol = symbol
+        self.mode = mode.lower()
+        self.bridge_url = bridge_url.rstrip("/")
         self._connected = False
-        self._mock_base_price = 2650.0
-        self._mock_candles: Dict[str, List[Dict]] = {}
-        self._mock_last_tick = self._mock_base_price
+        self._http_client: Optional[httpx.Client] = None
+
+        if self.mode == "bridge":
+            # ponytail: sync httpx client suffices for local container-to-host bridge (<5ms); upgrade to async if remote
+            self._http_client = httpx.Client(timeout=2.0)
 
     def initialize(self) -> bool:
-        """Attempt to connect to MetaTrader 5 terminal."""
+        """Connect to MT5 directly (Windows) or via HTTP Bridge (Docker/Remote)."""
+        if self.mode == "bridge":
+            try:
+                resp = self._http_client.get(f"{self.bridge_url}/status")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    self._connected = bool(data.get("connected", False))
+                    return self._connected
+            except Exception as e:
+                logger.debug(f"Bridge connection check failed: {e}")
+            self._connected = False
+            return False
+
+        # Direct Mode (Requires Windows MT5 library)
+        if not HAS_MT5_LIB:
+            logger.warning("MetaTrader5 library not available on this platform. Use mode='bridge' instead.")
+            self._connected = False
+            return False
+
         try:
             if mt5.initialize():
-                # Check symbol exists
                 info = mt5.symbol_info(self.symbol)
                 if info is not None:
                     if not info.visible:
                         mt5.symbol_select(self.symbol, True)
                     self._connected = True
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"MT5 direct initialize error: {e}")
+
         self._connected = False
         return False
 
@@ -45,8 +69,29 @@ class MT5Feed:
         return self._connected
 
     def get_candles(self, timeframe: str = "M5", count: int = 300) -> List[Dict]:
-        """Fetch historical candles formatted for TradingView Lightweight Charts."""
-        if self._connected:
+        """
+        Fetch real historical candles.
+        Returns empty list [] if disconnected or data unavailable. Strictly NO mock data.
+        """
+        if self.mode == "bridge":
+            try:
+                resp = self._http_client.get(
+                    f"{self.bridge_url}/candles",
+                    params={"tf": timeframe, "count": count}
+                )
+                if resp.status_code == 200:
+                    self._connected = True
+                    return resp.json()
+                self._connected = False
+            except Exception:
+                self._connected = False
+            return []
+
+        # Direct Mode
+        if not self._connected and HAS_MT5_LIB:
+            self.initialize()
+
+        if self._connected and HAS_MT5_LIB:
             tf = TF_MAP.get(timeframe, mt5.TIMEFRAME_M5)
             rates = mt5.copy_rates_from_pos(self.symbol, tf, 0, count)
             if rates is not None and len(rates) > 0:
@@ -61,14 +106,32 @@ class MT5Feed:
                         "volume": int(r['tick_volume'])
                     })
                 return result
+            # If rates failed, check if MT5 terminal connection dropped
+            self._connected = False
 
-        # Mock fallback if MT5 not connected
-        return self._generate_mock_candles(timeframe, count)
+        return []
 
-    def get_latest_tick(self) -> Dict:
-        """Fetch latest price tick."""
-        now = int(time.time())
-        if self._connected:
+    def get_latest_tick(self) -> Optional[Dict]:
+        """
+        Fetch latest real price tick.
+        Returns None if disconnected or unavailable. Strictly NO mock data.
+        """
+        if self.mode == "bridge":
+            try:
+                resp = self._http_client.get(f"{self.bridge_url}/tick")
+                if resp.status_code == 200:
+                    self._connected = True
+                    return resp.json()
+                self._connected = False
+            except Exception:
+                self._connected = False
+            return None
+
+        # Direct Mode
+        if not self._connected and HAS_MT5_LIB:
+            self.initialize()
+
+        if self._connected and HAS_MT5_LIB:
             tick = mt5.symbol_info_tick(self.symbol)
             if tick is not None:
                 return {
@@ -77,49 +140,19 @@ class MT5Feed:
                     "ask": float(tick.ask),
                     "last": float(tick.last or tick.bid)
                 }
+            self._connected = False
 
-        # Mock tick walk
-        delta = (random.random() - 0.495) * 0.4
-        self._mock_last_tick = round(self._mock_last_tick + delta, 2)
-        return {
-            "time": now,
-            "bid": round(self._mock_last_tick - 0.25, 2),
-            "ask": round(self._mock_last_tick + 0.25, 2),
-            "last": self._mock_last_tick
-        }
-
-    def _generate_mock_candles(self, timeframe: str, count: int) -> List[Dict]:
-        """Generate realistic synthetic historical candles."""
-        tf_sec = TF_SECONDS.get(timeframe, 300)
-        now = int(time.time())
-        aligned_now = now - (now % tf_sec)
-
-        candles = []
-        curr = self._mock_base_price
-        for i in range(count, 0, -1):
-            c_time = aligned_now - (i * tf_sec)
-            op = curr
-            change = (random.random() - 0.49) * 4.0
-            cl = round(op + change, 2)
-            hi = round(max(op, cl) + random.random() * 2.5, 2)
-            lo = round(min(op, cl) - random.random() * 2.5, 2)
-            candles.append({
-                "time": c_time,
-                "open": op,
-                "high": hi,
-                "low": lo,
-                "close": cl,
-                "volume": random.randint(100, 2000)
-            })
-            curr = cl
-
-        self._mock_last_tick = curr
-        return candles
+        return None
 
     def shutdown(self):
-        if self._connected:
+        if self.mode == "bridge" and self._http_client is not None:
+            try:
+                self._http_client.close()
+            except Exception:
+                pass
+        elif self.mode == "direct" and HAS_MT5_LIB and self._connected:
             try:
                 mt5.shutdown()
             except Exception:
                 pass
-            self._connected = False
+        self._connected = False

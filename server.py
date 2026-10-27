@@ -15,13 +15,18 @@ from core.smc_engine import SMCEngine, Signal
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("xauusd-server")
 
-mt5_feed = MT5Feed(symbol=settings.SYMBOL)
+mt5_feed = MT5Feed(
+    symbol=settings.SYMBOL,
+    mode=settings.MT5_MODE,
+    bridge_url=settings.MT5_BRIDGE_URL
+)
 smc_engine = SMCEngine(min_rr=settings.MIN_RR, sl_buffer=settings.SL_BUFFER_PIPS)
 
 active_connections: Set[WebSocket] = set()
 background_task: asyncio.Task = None
 current_tf = "M5"
 latest_signals: List[dict] = []
+last_connection_state: bool = False
 
 async def broadcast(event_type: str, data: dict):
     if not active_connections:
@@ -37,46 +42,64 @@ async def broadcast(event_type: str, data: dict):
         active_connections.discard(ws)
 
 async def tick_poller_loop():
-    """Background loop polling ticks sub-second (default ~150ms)."""
+    """Background loop polling real MT5 ticks sub-second (default ~150ms)."""
+    global last_connection_state
     poll_interval = settings.POLL_INTERVAL_MS / 1000.0
     last_evaluated_candle_time = 0
+    candle_sync_counter = 0
 
     while True:
         try:
-            tick = mt5_feed.get_latest_tick()
-            await broadcast("tick", {
-                "time": tick["time"],
-                "bid": tick["bid"],
-                "ask": tick["ask"],
-                "last": tick["last"]
-            })
+            tick = await asyncio.to_thread(mt5_feed.get_latest_tick)
 
-            # Fetch last 300 candles to monitor structure
-            candles = mt5_feed.get_candles(timeframe=current_tf, count=100)
-            if candles:
-                last_c = candles[-1]
-                await broadcast("candle_update", last_c)
+            # Broadcast connection state transition
+            is_connected = mt5_feed.is_connected()
+            if is_connected != last_connection_state:
+                last_connection_state = is_connected
+                await broadcast("status", {
+                    "connected": is_connected,
+                    "symbol": settings.SYMBOL,
+                    "mode": settings.MT5_MODE
+                })
 
-                # Check if last candle finished or changed
-                if last_c["time"] != last_evaluated_candle_time and len(candles) >= 20:
-                    last_evaluated_candle_time = last_c["time"]
-                    signal = smc_engine.evaluate(candles)
-                    if signal:
-                        sig_data = {
-                            "time": signal.time,
-                            "action": signal.action,
-                            "entry_price": signal.entry_price,
-                            "sl_price": signal.sl_price,
-                            "tp_price": signal.tp_price,
-                            "rr_ratio": signal.rr_ratio,
-                            "trap_type": signal.trap_type,
-                            "reason": signal.reason
-                        }
-                        latest_signals.append(sig_data)
-                        if len(latest_signals) > 50:
-                            latest_signals.pop(0)
-                        await broadcast("signal", sig_data)
-                        logger.info(f"Generated Signal: {sig_data}")
+            if tick is not None:
+                await broadcast("tick", {
+                    "time": tick["time"],
+                    "bid": tick["bid"],
+                    "ask": tick["ask"],
+                    "last": tick["last"]
+                })
+
+                # Sync candle structure periodically (~every 1s) to conserve CPU/network
+                candle_sync_counter += 1
+                if candle_sync_counter >= max(1, int(1.0 / poll_interval)):
+                    candle_sync_counter = 0
+                    candles = await asyncio.to_thread(mt5_feed.get_candles, current_tf, 100)
+                    if candles:
+                        last_c = candles[-1]
+                        await broadcast("candle_update", last_c)
+
+                        # Evaluate structure using completed bars (candles[:-1]) on bar close
+                        if last_c["time"] != last_evaluated_candle_time and len(candles) >= 20:
+                            last_evaluated_candle_time = last_c["time"]
+                            # Evaluate on finished candle bars to prevent premature signals
+                            signal = smc_engine.evaluate(candles[:-1])
+                            if signal:
+                                sig_data = {
+                                    "time": signal.time,
+                                    "action": signal.action,
+                                    "entry_price": signal.entry_price,
+                                    "sl_price": signal.sl_price,
+                                    "tp_price": signal.tp_price,
+                                    "rr_ratio": signal.rr_ratio,
+                                    "trap_type": signal.trap_type,
+                                    "reason": signal.reason
+                                }
+                                latest_signals.append(sig_data)
+                                if len(latest_signals) > 50:
+                                    latest_signals.pop(0)
+                                await broadcast("signal", sig_data)
+                                logger.info(f"Generated Signal: {sig_data}")
 
         except Exception as e:
             logger.error(f"Error in tick poller loop: {e}")
@@ -86,12 +109,12 @@ async def tick_poller_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting MT5 feed connection...")
+    logger.info(f"Starting MT5 feed connection (mode={settings.MT5_MODE})...")
     connected = mt5_feed.initialize()
     if connected:
-        logger.info(f"Connected to MetaTrader 5 terminal for symbol {settings.SYMBOL}")
+        logger.info(f"Connected to MetaTrader 5 for symbol {settings.SYMBOL}")
     else:
-        logger.warning("MetaTrader 5 terminal not found or offline. Running with realistic synthetic feed.")
+        logger.warning("MetaTrader 5 terminal/bridge offline. Waiting for real MT5 connection...")
 
     global background_task
     background_task = asyncio.create_task(tick_poller_loop())
@@ -108,12 +131,13 @@ app = FastAPI(title="XAUUSD Retail-Trap Signal Server", lifespan=lifespan)
 async def get_candles(tf: str = Query("M5"), count: int = 300):
     global current_tf
     current_tf = tf
-    return mt5_feed.get_candles(timeframe=tf, count=count)
+    return await asyncio.to_thread(mt5_feed.get_candles, tf, count)
 
 @app.get("/api/status")
 async def get_status():
     return {
         "symbol": settings.SYMBOL,
+        "mode": settings.MT5_MODE,
         "connected_to_mt5": mt5_feed.is_connected(),
         "poll_interval_ms": settings.POLL_INTERVAL_MS,
         "current_tf": current_tf,
@@ -132,19 +156,19 @@ async def websocket_endpoint(websocket: WebSocket):
             "data": {
                 "symbol": settings.SYMBOL,
                 "connected_to_mt5": mt5_feed.is_connected(),
+                "mode": settings.MT5_MODE,
                 "timeframe": current_tf,
                 "recent_signals": latest_signals[-5:]
             }
         }))
         while True:
-            # Keep connection open & handle incoming client messages (e.g. switch TF)
             data_text = await websocket.receive_text()
             try:
                 msg = json.loads(data_text)
                 if msg.get("action") == "set_timeframe":
                     new_tf = msg.get("timeframe", "M5")
                     current_tf = new_tf
-                    candles = mt5_feed.get_candles(timeframe=new_tf, count=300)
+                    candles = await asyncio.to_thread(mt5_feed.get_candles, new_tf, 300)
                     await websocket.send_text(json.dumps({
                         "event": "candles_snapshot",
                         "data": {"timeframe": new_tf, "candles": candles}

@@ -126,6 +126,38 @@
       height: 100%;
       position: relative;
     }
+    #offline-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(14, 17, 23, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      color: #f0f6fc;
+      text-align: center;
+      padding: 20px;
+    }
+    .offline-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f23645;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .offline-desc {
+      font-size: 13px;
+      color: #8b949e;
+      max-width: 420px;
+      line-height: 1.5;
+    }
     #sidebar {
       width: 360px;
       background: var(--bg-surface);
@@ -267,7 +299,15 @@
   </header>
 
   <main>
-    <div id="chart-container"></div>
+    <div id="chart-container">
+      <div id="offline-overlay">
+        <div class="offline-title">⚠️ MetaTrader 5 Offline</div>
+        <div class="offline-desc">
+          Menunggu data real dari MetaTrader 5.<br>
+          Pastikan terminal MT5 terbuka dan <code>python mt5_bridge.py</code> aktif di Windows host.
+        </div>
+      </div>
+    </div>
     <div id="sidebar">
       <div class="sidebar-header">
         <span>Sinyal Counter-Trap</span>
@@ -293,6 +333,22 @@
     const statusText = document.getElementById("status-text");
     const signalsList = document.getElementById("signals-list");
     const signalCount = document.getElementById("signal-count");
+    const offlineOverlay = document.getElementById("offline-overlay");
+
+    function updateConnectionStatus(connected, mode) {
+      if (connected) {
+        statusDot.style.background = "#3fb950";
+        statusDot.style.boxShadow = "0 0 8px #3fb950";
+        statusText.innerText = `MT5 Realtime (${mode || 'live'})`;
+        offlineOverlay.style.display = "none";
+        loadCandles(currentTf);
+      } else {
+        statusDot.style.background = "#f23645";
+        statusDot.style.boxShadow = "0 0 8px #f23645";
+        statusText.innerText = "MT5 Offline";
+        offlineOverlay.style.display = "flex";
+      }
+    }
 
     // Initialize Lightweight Chart
     function initChart() {
@@ -348,6 +404,7 @@
         if (data && data.length > 0) {
           candleSeries.setData(data);
           chart.timeScale().fitContent();
+          offlineOverlay.style.display = "none";
         }
       } catch (err) {
         console.error("Gagal load candle:", err);
@@ -363,9 +420,9 @@
       ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
       ws.onopen = () => {
-        statusDot.style.background = "#3fb950";
-        statusDot.style.boxShadow = "0 0 8px #3fb950";
-        statusText.innerText = "Realtime Live";
+        statusDot.style.background = "#d29922";
+        statusDot.style.boxShadow = "0 0 8px #d29922";
+        statusText.innerText = "Koneksi WebSocket Aktif...";
       };
 
       ws.onmessage = (event) => {
@@ -373,10 +430,14 @@
 
         if (msg.event === "connected") {
           const info = msg.data;
-          statusText.innerText = info.connected_to_mt5 ? "MT5 Live" : "Synthetic Feed (Mock)";
+          updateConnectionStatus(info.connected_to_mt5, info.mode);
           if (info.recent_signals) {
             info.recent_signals.forEach(renderSignalCard);
           }
+        }
+
+        if (msg.event === "status") {
+          updateConnectionStatus(msg.data.connected, msg.data.mode);
         }
 
         if (msg.event === "tick") {
