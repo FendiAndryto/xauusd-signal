@@ -74,7 +74,7 @@ async def tick_poller_loop():
                 candle_sync_counter += 1
                 if candle_sync_counter >= max(1, int(1.0 / poll_interval)):
                     candle_sync_counter = 0
-                    candles = await asyncio.to_thread(mt5_feed.get_candles, current_tf, 100)
+                    candles = await asyncio.to_thread(mt5_feed.get_candles, current_tf, 300)
                     if candles:
                         last_c = candles[-1]
                         await broadcast("candle_update", last_c)
@@ -82,8 +82,9 @@ async def tick_poller_loop():
                         # Evaluate structure using completed bars (candles[:-1]) on bar close
                         if last_c["time"] != last_evaluated_candle_time and len(candles) >= 20:
                             last_evaluated_candle_time = last_c["time"]
-                            # Evaluate on finished candle bars to prevent premature signals
-                            signal = smc_engine.evaluate(candles[:-1])
+                            # Fetch H4 candles for macro trend filter (>=200 candles for EMA 200)
+                            h4_candles = await asyncio.to_thread(mt5_feed.get_candles, "H4", 250)
+                            signal = smc_engine.evaluate(candles[:-1], h4_candles)
                             if signal:
                                 sig_data = {
                                     "time": signal.time,
@@ -92,14 +93,18 @@ async def tick_poller_loop():
                                     "sl_price": signal.sl_price,
                                     "tp_price": signal.tp_price,
                                     "rr_ratio": signal.rr_ratio,
+                                    "grade": signal.grade,
+                                    "traps": signal.traps,
                                     "trap_type": signal.trap_type,
+                                    "confluence_score": signal.confluence_score,
+                                    "macro_aligned": signal.macro_aligned,
                                     "reason": signal.reason
                                 }
                                 latest_signals.append(sig_data)
                                 if len(latest_signals) > 50:
                                     latest_signals.pop(0)
                                 await broadcast("signal", sig_data)
-                                logger.info(f"Generated Signal: {sig_data}")
+                                logger.info(f"Generated Confluence Signal: Grade {signal.grade} {sig_data}")
 
         except Exception as e:
             logger.error(f"Error in tick poller loop: {e}")

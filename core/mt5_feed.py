@@ -17,6 +17,7 @@ TF_MAP = {
     "M5": 5 if not HAS_MT5_LIB else mt5.TIMEFRAME_M5,
     "M15": 15 if not HAS_MT5_LIB else mt5.TIMEFRAME_M15,
     "H1": 16385 if not HAS_MT5_LIB else mt5.TIMEFRAME_H1,
+    "H4": 16388 if not HAS_MT5_LIB else mt5.TIMEFRAME_H4,
 }
 
 class MT5Feed:

@@ -266,6 +266,51 @@
       font-size: 10px;
       font-weight: 600;
     }
+    .grade-badge {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+    .grade-B {
+      background: rgba(210, 153, 34, 0.2);
+      color: #d29922;
+      border: 1px solid #d29922;
+    }
+    .grade-A {
+      background: rgba(47, 129, 247, 0.2);
+      color: #2f81f7;
+      border: 1px solid #2f81f7;
+    }
+    .grade-Aplus {
+      background: rgba(46, 160, 67, 0.25);
+      color: #3fb950;
+      border: 1px solid #3fb950;
+      box-shadow: 0 0 8px rgba(63, 185, 80, 0.4);
+    }
+    .trap-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .trap-pill {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .signal-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
     .empty-state {
       text-align: center;
       color: var(--text-secondary);
@@ -527,14 +572,29 @@
         second: "2-digit",
       });
 
+      const grade = sig.grade || "B";
+      const gradeClass = grade === "A+" ? "grade-Aplus" : (grade === "A" ? "grade-A" : "grade-B");
+      const traps = (sig.traps && sig.traps.length > 0) ? sig.traps : [sig.trap_type || "SWEEP"];
+      const trapPillsHtml = traps.map(t => `<span class="trap-pill">${t}</span>`).join("");
+      const macroStatusHtml = sig.macro_aligned 
+        ? `<span style="color: #3fb950;">✓ H4 Trend Aligned</span>` 
+        : `<span style="color: #8b949e;">• Neutral / Counter</span>`;
+
       const card = document.createElement("div");
       card.className = `signal-card ${sig.action}`;
       card.innerHTML = `
         <div class="signal-top">
-          <span class="signal-action ${sig.action}">${sig.action}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="signal-action ${sig.action}">${sig.action}</span>
+            <span class="grade-badge ${gradeClass}">GRADE ${grade}</span>
+          </div>
           <span class="signal-time">${timeStr}</span>
         </div>
-        <div class="signal-badge">${sig.trap_type} (RR 1:${sig.rr_ratio})</div>
+        <div class="trap-pills">${trapPillsHtml}</div>
+        <div class="signal-meta-row">
+          <span>RR 1:${sig.rr_ratio}</span>
+          <span>${macroStatusHtml}</span>
+        </div>
         <div class="signal-levels">
           <div class="level-item">
             <span class="level-lbl">Entry</span>
@@ -549,8 +609,9 @@
             <span class="level-val" style="color: #089981;">${sig.tp_price.toFixed(2)}</span>
           </div>
         </div>
-        <div class="signal-reason">${sig.reason}</div>
+        <div class="signal-reason"></div>
       `;
+      card.querySelector(".signal-reason").textContent = sig.reason;
       signalsList.prepend(card);
       signalCount.innerText = `${signalsList.children.length} Sinyal`;
     }

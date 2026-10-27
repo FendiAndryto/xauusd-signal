@@ -17,6 +17,7 @@ TF_MAP = {
     "M5": mt5.TIMEFRAME_M5,
     "M15": mt5.TIMEFRAME_M15,
     "H1": mt5.TIMEFRAME_H1,
+    "H4": mt5.TIMEFRAME_H4,
 }
 
 connected_to_mt5 = False
