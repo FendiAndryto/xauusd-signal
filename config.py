@@ -6,7 +6,7 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
-    SYMBOL: str = os.getenv("SYMBOL", "XAUUSD")
+    SYMBOL: str = os.getenv("SYMBOL", "XAUUSDm")
     MT5_MODE: str = os.getenv("MT5_MODE", "direct")
     MT5_BRIDGE_URL: str = os.getenv("MT5_BRIDGE_URL", "http://host.docker.internal:8081")
     WEB_HOST: str = os.getenv("WEB_HOST", "127.0.0.1")

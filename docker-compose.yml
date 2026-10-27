@@ -9,7 +9,7 @@ services:
     environment:
       - MT5_MODE=bridge
       - MT5_BRIDGE_URL=http://host.docker.internal:8081
-      - SYMBOL=XAUUSD
+      - SYMBOL=XAUUSDm
       - POLL_INTERVAL_MS=150
       - WEB_HOST=0.0.0.0
       - WEB_PORT=8000

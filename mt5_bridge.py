@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [MT5-BRIDGE] %(message)s")
 logger = logging.getLogger("mt5-bridge")
 
-SYMBOL = os.getenv("SYMBOL", "XAUUSD")
+SYMBOL = os.getenv("SYMBOL", "XAUUSDm")
 BRIDGE_PORT = int(os.getenv("BRIDGE_PORT", "8081"))
 
 TF_MAP = {

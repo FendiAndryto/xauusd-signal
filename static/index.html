@@ -277,7 +277,7 @@
 <body>
   <header>
     <div class="brand-section">
-      <div class="symbol-tag">XAUUSD</div>
+      <div class="symbol-tag" id="symbol-tag">XAUUSDm</div>
       <div class="status-badge">
         <span class="pulse-dot" id="status-dot"></span>
         <span id="status-text">Menghubungkan...</span>
@@ -430,6 +430,7 @@
 
         if (msg.event === "connected") {
           const info = msg.data;
+          if (info.symbol) document.getElementById("symbol-tag").innerText = info.symbol;
           updateConnectionStatus(info.connected_to_mt5, info.mode);
           if (info.recent_signals) {
             info.recent_signals.forEach(renderSignalCard);
