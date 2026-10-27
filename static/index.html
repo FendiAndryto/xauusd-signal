@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XAUUSD Anti-Bandar Signal & Realtime Chart</title>
+  <!-- TradingView Lightweight Charts CDN -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0e1117;
+      --bg-surface: #161b22;
+      --border-color: #30363d;
+      --text-primary: #f0f6fc;
+      --text-secondary: #8b949e;
+      --bull-green: #089981;
+      --bear-red: #f23645;
+      --accent-blue: #2f81f7;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .symbol-tag {
+      background: #238636;
+      color: #fff;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: #21262d;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3fb950;
+      box-shadow: 0 0 8px #3fb950;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+    .tick-box {
+      display: flex;
+      gap: 16px;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      background: #0d1117;
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+    .tick-val {
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+    .tf-selector {
+      display: flex;
+      gap: 6px;
+    }
+    .tf-btn {
+      background: #21262d;
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .tf-btn:hover {
+      background: #30363d;
+    }
+    .tf-btn.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+    #chart-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+    #sidebar {
+      width: 360px;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sidebar-count {
+      background: #21262d;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .signals-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .signal-card {
+      background: #0d1117;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.2s;
+    }
+    .signal-card.BUY {
+      border-left: 4px solid var(--bull-green);
+    }
+    .signal-card.SELL {
+      border-left: 4px solid var(--bear-red);
+    }
+    .signal-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .signal-action {
+      font-weight: 800;
+      font-size: 14px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .signal-action.BUY {
+      background: rgba(8, 153, 129, 0.2);
+      color: var(--bull-green);
+    }
+    .signal-action.SELL {
+      background: rgba(242, 54, 69, 0.2);
+      color: var(--bear-red);
+    }
+    .signal-time {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .signal-levels {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      background: #161b22;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .level-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .level-lbl {
+      color: var(--text-secondary);
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+    .level-val {
+      font-weight: 700;
+      font-family: monospace;
+    }
+    .signal-reason {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+    .signal-badge {
+      display: inline-block;
+      align-self: flex-start;
+      background: #30363d;
+      color: #e6edf3;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .empty-state {
+      text-align: center;
+      color: var(--text-secondary);
+      padding: 40px 20px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand-section">
+      <div class="symbol-tag">XAUUSD</div>
+      <div class="status-badge">
+        <span class="pulse-dot" id="status-dot"></span>
+        <span id="status-text">Menghubungkan...</span>
+      </div>
+    </div>
+
+    <div class="tick-box">
+      <div>BID: <span id="bid-price" class="tick-val">--</span></div>
+      <div>ASK: <span id="ask-price" class="tick-val">--</span></div>
+      <div>LAST: <span id="last-price" class="tick-val">--</span></div>
+    </div>
+
+    <div class="tf-selector">
+      <button class="tf-btn" data-tf="M1">M1</button>
+      <button class="tf-btn active" data-tf="M5">M5</button>
+      <button class="tf-btn" data-tf="M15">M15</button>
+      <button class="tf-btn" data-tf="H1">H1</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="chart-container"></div>
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <span>Sinyal Counter-Trap</span>
+        <span class="sidebar-count" id="signal-count">0 Sinyal</span>
+      </div>
+      <div class="signals-list" id="signals-list">
+        <div class="empty-state">Menunggu formasi Retail Trap / Sweep...</div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentTf = "M5";
+    let chart, candleSeries;
+    let markers = [];
+    let currentPriceLines = [];
+
+    const container = document.getElementById("chart-container");
+    const bidEl = document.getElementById("bid-price");
+    const askEl = document.getElementById("ask-price");
+    const lastEl = document.getElementById("last-price");
+    const statusDot = document.getElementById("status-dot");
+    const statusText = document.getElementById("status-text");
+    const signalsList = document.getElementById("signals-list");
+    const signalCount = document.getElementById("signal-count");
+
+    // Initialize Lightweight Chart
+    function initChart() {
+      chart = LightweightCharts.createChart(container, {
+        layout: {
+          background: { color: "#0e1117" },
+          textColor: "#8b949e",
+        },
+        grid: {
+          vertLines: { color: "#161b22" },
+          horzLines: { color: "#161b22" },
+        },
+        crosshair: {
+          mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderColor: "#30363d",
+        },
+        timeScale: {
+          borderColor: "#30363d",
+          timeVisible: true,
+          secondsVisible: false,
+        },
+      });
+
+      candleSeries = chart.addCandlestickSeries({
+        upColor: "#089981",
+        downColor: "#f23645",
+        borderVisible: false,
+        wickUpColor: "#089981",
+        wickDownColor: "#f23645",
+      });
+
+      window.addEventListener("resize", () => {
+        chart.applyOptions({
+          width: container.clientWidth,
+          height: container.clientHeight,
+        });
+      });
+      chart.applyOptions({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      });
+    }
+
+    initChart();
+
+    // Fetch initial historical candles
+    async function loadCandles(tf) {
+      try {
+        const res = await fetch(`/api/candles?tf=${tf}&count=300`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          candleSeries.setData(data);
+          chart.timeScale().fitContent();
+        }
+      } catch (err) {
+        console.error("Gagal load candle:", err);
+      }
+    }
+
+    loadCandles(currentTf);
+
+    // Setup WebSocket
+    let ws;
+    function connectWs() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+      ws.onopen = () => {
+        statusDot.style.background = "#3fb950";
+        statusDot.style.boxShadow = "0 0 8px #3fb950";
+        statusText.innerText = "Realtime Live";
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.event === "connected") {
+          const info = msg.data;
+          statusText.innerText = info.connected_to_mt5 ? "MT5 Live" : "Synthetic Feed (Mock)";
+          if (info.recent_signals) {
+            info.recent_signals.forEach(renderSignalCard);
+          }
+        }
+
+        if (msg.event === "tick") {
+          const t = msg.data;
+          bidEl.innerText = t.bid.toFixed(2);
+          askEl.innerText = t.ask.toFixed(2);
+          lastEl.innerText = t.last.toFixed(2);
+        }
+
+        if (msg.event === "candle_update") {
+          const c = msg.data;
+          candleSeries.update(c);
+        }
+
+        if (msg.event === "candles_snapshot") {
+          candleSeries.setData(msg.data.candles);
+          chart.timeScale().fitContent();
+        }
+
+        if (msg.event === "signal") {
+          handleIncomingSignal(msg.data);
+        }
+      };
+
+      ws.onclose = () => {
+        statusDot.style.background = "#f23645";
+        statusDot.style.boxShadow = "0 0 8px #f23645";
+        statusText.innerText = "Reconnecting...";
+        setTimeout(connectWs, 2000);
+      };
+    }
+
+    connectWs();
+
+    // Handle Incoming Signal
+    function handleIncomingSignal(sig) {
+      // Add Chart Marker
+      const marker = {
+        time: sig.time,
+        position: sig.action === "BUY" ? "belowBar" : "aboveBar",
+        color: sig.action === "BUY" ? "#089981" : "#f23645",
+        shape: sig.action === "BUY" ? "arrowUp" : "arrowDown",
+        text: `${sig.action} @ ${sig.entry_price}`,
+      };
+      markers.push(marker);
+      candleSeries.setMarkers(markers);
+
+      // Remove previous lines & draw new SL/TP
+      currentPriceLines.forEach(line => candleSeries.removePriceLine(line));
+      currentPriceLines = [];
+
+      const entryLine = candleSeries.createPriceLine({
+        price: sig.entry_price,
+        color: "#2f81f7",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dotted,
+        title: `ENTRY ${sig.action}`,
+      });
+      const slLine = candleSeries.createPriceLine({
+        price: sig.sl_price,
+        color: "#f23645",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        title: `SL (${sig.sl_price})`,
+      });
+      const tpLine = candleSeries.createPriceLine({
+        price: sig.tp_price,
+        color: "#089981",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        title: `TP (${sig.tp_price})`,
+      });
+      currentPriceLines.push(entryLine, slLine, tpLine);
+
+      // Render Card
+      renderSignalCard(sig);
+    }
+
+    function renderSignalCard(sig) {
+      const empty = signalsList.querySelector(".empty-state");
+      if (empty) empty.remove();
+
+      const timeStr = new Date(sig.time * 1000).toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+
+      const card = document.createElement("div");
+      card.className = `signal-card ${sig.action}`;
+      card.innerHTML = `
+        <div class="signal-top">
+          <span class="signal-action ${sig.action}">${sig.action}</span>
+          <span class="signal-time">${timeStr}</span>
+        </div>
+        <div class="signal-badge">${sig.trap_type} (RR 1:${sig.rr_ratio})</div>
+        <div class="signal-levels">
+          <div class="level-item">
+            <span class="level-lbl">Entry</span>
+            <span class="level-val">${sig.entry_price.toFixed(2)}</span>
+          </div>
+          <div class="level-item">
+            <span class="level-lbl">Stop Loss</span>
+            <span class="level-val" style="color: #f23645;">${sig.sl_price.toFixed(2)}</span>
+          </div>
+          <div class="level-item">
+            <span class="level-lbl">Take Profit</span>
+            <span class="level-val" style="color: #089981;">${sig.tp_price.toFixed(2)}</span>
+          </div>
+        </div>
+        <div class="signal-reason">${sig.reason}</div>
+      `;
+      signalsList.prepend(card);
+      signalCount.innerText = `${signalsList.children.length} Sinyal`;
+    }
+
+    // Timeframe selector buttons
+    document.querySelectorAll(".tf-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tf-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentTf = btn.dataset.tf;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: "set_timeframe", timeframe: currentTf }));
+        } else {
+          loadCandles(currentTf);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
